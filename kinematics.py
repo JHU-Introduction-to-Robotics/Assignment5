@@ -63,66 +63,74 @@ class DifferentialDrive(object):
             self.V[2, 2] = 0.075
         return self.V
 
-"""
-Computes the forward kinematics for the system.
+    """
+    Computes the forward kinematics for the system.
+    
+    Input
+      :param x0: The starting state (position) of the system (units:[m,m,rad]) -> np.array with shape (3,)
+      :param u: The control input to the system (e.g. wheel rotation rates) (units: [rad/s,rad/s]) -> np.array with shape (2,)
+      :param v: The noise applied to the system (units:[m/s, m/s, rad/s^2]) -> np.array with shape (3,)
+    
+    Output
+      :return: x1: The new state of the system
+    """
+    # 20 points: Implement this function
+    def forward(self, x, u, v, dt):
 
-Input
-  :param x0: The starting state (position) of the system (units:[m,m,rad]) -> np.array with shape (3,)
-  :param u: The control input to the system (e.g. wheel rotation rates) (units: [rad/s,rad/s]) -> np.array with shape (2,)
-  :param v: The noise applied to the system (units:[m/s, m/s, rad/s^2]) -> np.array with shape (3,)
+        A, B = self.linearize(x, u)
 
-Output
-  :return: x1: The new state of the system
-"""
-# 20 points: Implement this funciton
-def forward(self, x, u, v, dt):
+        # scaling A based on dt
+        A[0, 2] = A[0, 2] * dt
+        A[1, 2] = A[1, 2] * dt
+        A[2, 2] = dt
 
-    A, B = linearize(x, u)
+        # scaling B based on dt
+        B = B * dt
 
-    Ax = np.matmul(A, x) # A * x
-    Bu = np.matmul(B, u) # B * u
+        Ax = np.matmul(A, x) # A * x
+        Bu = np.matmul(B, u) # B * u
 
-    x1 = np.add(Ax, Bu) # x1 = Ax + Bu
+        x1 = np.add(Ax, Bu) # x1 = Ax + Bu
 
-    return x1
+        return x1
 
-"""
-Computes the first order jacobian for A and B around the state x and input u
+    """
+    Computes the first order jacobian for A and B around the state x and input u
+    
+    Input
+      :param x: The state of the system  -> np.array with shape (3,)
+      :param u: The control input to the system (e.g. wheel rotation rates) -> np.array with shape (2,)
+    
+    Output
+      :return: A: The Jacobian of the kinematics with respect to x 
+      :return: B: The Jacobian of the kinematics with respect to u
+    """
+    # 20 points: Implement this function
+    def linearize(self, x, u):
 
-Input
-  :param x: The state of the system  -> np.array with shape (3,)
-  :param u: The control input to the system (e.g. wheel rotation rates) -> np.array with shape (2,)
+        theta = x[2, 0] # theta as taken from state vector
+        sin_theta = np.sin(theta)
+        cos_theta = np.sin(theta)
+        R_div_2 = self.R / 2
+        R_div_L = self.R / self.L
+        v_left = u[0, 0]
+        v_right = [1, 0]
 
-Output
-  :return: A: The Jacobian of the kinematics with respect to x 
-  :return: B: The Jacobian of the kinematics with respect to u
-"""
-# 20 points: Implement this funciton
-def linearize(self, x, u):
+        # calculate A matrix
+        A = np.eye(3)
+        A[0, 2] = -R_div_2 * sin_theta * (v_left + v_right)
+        A[1, 2] = R_div_2 * cos_theta * (v_left + v_right)
 
-    theta = x[2, 0] # theta as taken from state vector
-    sin_theta = np.sin(theta)
-    cos_theta = np.sin(theta)
-    R_div_2 = self.R / 2
-    R_div_L = self.R / self.L
-    u_left = u[0, 0]
-    u_right = [1, 0]
+        # calculate B matrix
+        B = np.zeros((3, 2))
+        B[0, 0] = R_div_2 * cos_theta
+        B[0, 1] = R_div_2 * cos_theta
+        B[1, 0] = R_div_2 * sin_theta
+        B[1, 1] = R_div_2 * sin_theta
+        B[2, 0] = -R_div_L
+        B[2, 1] = R_div_L
 
-    # calculate A matrix
-    A = np.eye(3)
-    A[0, 2] = -R_div_2 * sin_theta * (u_left + u_right)
-    A[1, 2] = R_div_2 * cos_theta * (u_left + u_right)
-
-    # calculate B matrix
-    B = np.zeros((3, 2))
-    B[0, 0] = R_div_2 * cos_theta
-    B[0, 1] = R_div_2 * cos_theta
-    B[1, 0] = R_div_2 * sin_theta
-    B[1, 1] = R_div_2 * sin_theta
-    B[2, 0] = -R_div_L
-    B[2, 1] = R_div_L
-
-    return A, B
+        return A, B
 
 '''
 discrete-time linear quadratic regulator for a non-linear system.
@@ -147,9 +155,17 @@ Hint: Making additional helper functions may be useful
   Output
     :return: u: Optimal action u for the current state
 '''
+# 50 points: Implement this function
 def dLQR(F, Q, R, x, xf, dt):
 
-    # 50 points: Implement this funciton
+    N = 100 # number of steps
+    x_dist = np.subtract(x, xf)
+    A, B = F.linearize(x, ????)
+
+    P = [] * (N + 1)
+
+
+
 
     raise NotImplementedError
 
@@ -163,10 +179,11 @@ Experiment with different gains to see their effect on the vehicle's behavior.
   Output
     :return: R: input cost matrix
 '''
-def get_R():
 
-    # 5 points: Implement this funciton
-    raise NotImplementedError
+
+# 5 points: Implement this function
+def get_R():
+    return np.eye(2)
 
 '''
 This function provides the Q matrix to the lqr_steer_control and lqr_ekf_control simulators.
@@ -178,7 +195,6 @@ Experiment with different gains to see their effect on the vehicle's behavior.
   Output
     :return: Q: State cost matrix
 '''
+# 5 points: Implement this function
 def get_Q():
-
-    # 5 points: Implement this funciton
-    raise NotImplementedError
+    return np.eye(3)
