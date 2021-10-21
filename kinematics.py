@@ -77,15 +77,7 @@ class DifferentialDrive(object):
     # 20 points: Implement this function
     def forward(self, x, u, v, dt):
 
-        A, B = self.linearize(x, u)
-
-        # scaling A based on dt
-        A[0, 2] = A[0, 2] * dt
-        A[1, 2] = A[1, 2] * dt
-        A[2, 2] = dt
-
-        # scaling B based on dt
-        B = B * dt
+        A, B = self.linearize(x, u, dt)
 
         Ax = np.matmul(A, x) # A * x
         Bu = np.matmul(B, u) # B * u
@@ -106,20 +98,21 @@ class DifferentialDrive(object):
       :return: B: The Jacobian of the kinematics with respect to u
     """
     # 20 points: Implement this function
-    def linearize(self, x, u):
+    def linearize(self, x, u, dt):
 
-        theta = x[2, 0] # theta as taken from state vector
+        theta = x[2] # theta as taken from state vector
         sin_theta = np.sin(theta)
         cos_theta = np.sin(theta)
         R_div_2 = self.R / 2
         R_div_L = self.R / self.L
-        v_left = u[0, 0]
-        v_right = [1, 0]
+        v_left = u[0]
+        v_right = u[1]
 
         # calculate A matrix
         A = np.eye(3)
-        A[0, 2] = -R_div_2 * sin_theta * (v_left + v_right)
-        A[1, 2] = R_div_2 * cos_theta * (v_left + v_right)
+        A[0, 2] = -R_div_2 * sin_theta * (v_left + v_right) * dt
+        A[1, 2] = R_div_2 * cos_theta * (v_left + v_right) * dt
+        A[2, 2] = dt
 
         # calculate B matrix
         B = np.zeros((3, 2))
@@ -129,6 +122,7 @@ class DifferentialDrive(object):
         B[1, 1] = R_div_2 * sin_theta
         B[2, 0] = -R_div_L
         B[2, 1] = R_div_L
+        B = np.multiply(B, dt)
 
         return A, B
 
@@ -158,16 +152,44 @@ Hint: Making additional helper functions may be useful
 # 50 points: Implement this function
 def dLQR(F, Q, R, x, xf, dt):
 
-    N = 100 # number of steps
+    u0 = np.array([0, 0])
+    A, B = F.linearize(x, u0, dt)
+    AT = np.transpose(A)
+    BT = np.transpose(B)
+
     x_dist = np.subtract(x, xf)
-    A, B = F.linearize(x, ????)
+    N = 5 # number of steps
+    P = [0] * (N + 1)
+    Qf = Q
+    P[N] = Qf
 
-    P = [] * (N + 1)
+    for i in range(N, 0, -1):
+       AT_Pi_A = np.matmul(np.matmul(AT, P[i]), A) # A^T * P[i] * A
+       AT_Pi_B = np.matmul(np.matmul(AT, P[i]), B) # A^T * P[i] * B
+       BT_Pi_B = np.matmul(np.matmul(BT, P[i]), B) # B^T * P[i] * B
+       BT_Pi_A = np.matmul(np.matmul(BT, P[i]), A) # B^T * P[i] * A
 
+       R_BT_Pi_B = np.add(R, BT_Pi_B) # R + (B^T * P[i] * B)
+       R_BT_Pi_B_inv = np.linalg.inv(R_BT_Pi_B) # (R + (B^T * P[i] * B))^-1
+       Q_AT_Pi_A = np.add(Q, AT_Pi_A) # Q + (A^T * P[i] * A)
 
+       P[i - 1] = np.subtract(Q_AT_Pi_A, np.matmul(np.matmul(AT_Pi_B, R_BT_Pi_B_inv), BT_Pi_A))
 
+    K = [0] * N
+    u = [0] * N
 
-    raise NotImplementedError
+    for i in range(0, N):
+        BT_Piplus1_B = np.matmul(np.matmul(BT, P[i + 1]), B) # B^T * P[i + 1] * B
+        BT_Piplus1_A = np.matmul(np.matmul(BT, P[i + 1]), A) # B^T * P[i + 1] * A
+        R_BT_Piplus1_B = np.add(R, BT_Piplus1_B) # R + (B^T * P[i + 1] * B)
+        R_BT_Piplus1_B_inv = np.linalg.inv(R_BT_Piplus1_B) # (R + (B^T * P[i + 1] * B))^-1
+        neg_R_BT_Piplus1_B_inv = np.multiply(-1, R_BT_Piplus1_B_inv) # -(R + (B^T * P[i + 1] * B))^-1
+        K[i] = np.matmul(neg_R_BT_Piplus1_B_inv, BT_Piplus1_A)
+        u[i] = np.matmul(K[i], x_dist)
+
+    u_opt = u[N - 1]
+
+    return u_opt
 
 '''
 This function provides the R matrix to the lqr_steer_control and lqr_ekf_control simulators.
@@ -183,7 +205,12 @@ Experiment with different gains to see their effect on the vehicle's behavior.
 
 # 5 points: Implement this function
 def get_R():
-    return np.eye(2)
+    R = [
+         [0.1, 0],
+         [0, 0.1]
+        ]
+    R = np.reshape(R, (2, 2))
+    return R
 
 '''
 This function provides the Q matrix to the lqr_steer_control and lqr_ekf_control simulators.
@@ -197,4 +224,10 @@ Experiment with different gains to see their effect on the vehicle's behavior.
 '''
 # 5 points: Implement this function
 def get_Q():
-    return np.eye(3)
+    Q = [
+         [1, 0, 0],
+         [0, 1, 0],
+         [0, 0, 1]
+        ]
+    Q = np.reshape(Q, (3, 3))
+    return Q
