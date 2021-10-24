@@ -1,5 +1,7 @@
 '''
 ####################
+Sahil Sharma
+10/24/21
 EN605.613 - Introduction to Robotics
 Assignment 5
 Linear Quadratice Regulator
@@ -13,6 +15,40 @@ Copyright 2020,
 The Johns Hopkins University Applied Physics Laboratory LLC (JHU/APL).
 All Rights Reserved.
 ####################
+'''
+
+'''
+Some notes about my implementation:
+I was not able to get the robot to turn and correctly follow the red line.
+This result was evident by the fact that my blue dot continued on a forward trajectory without
+correctly turning at any point. In the process of attempting to debug I double checked my calculation
+for the A and B matrices (the Jacobian calculation) and those seemed correct based on the process laid
+out in the lecture notes. I also double checked my forward function but this seemed trivial since it was just
+implementing x[t + 1] = A*x[t] + B*u[t] where x[t] and u[t] are provided as parameters and the A, B matrices
+are calculated from the linearize function. I also carefully reviewed my dLQR function and remain unsure
+where my mistake is since I am following the pseudocode provided in lecture and the instructions/guidance
+provided in office hours. I did attempt the use of different Q and Rs, per the assignment direction, but did not note
+an appreciable improvement in my robots attempts to follow the desired path.
+The symptom of the robot not turning seems to point to a math error somewhere but after
+stepping through my software using the debugger and reviewing my implementation of the equations I was not able to
+find my mistake. Any feedback or thoughts on what I missed would be greatly appreciated since I feel like my
+implementation is close to the right solution.
+
+Answers to Questions asked in assingment:
+Since I could not get my simulation working fully I will attempt to answer these questions by speculating, based
+on my understanding of cost matrices (Q and R), what the result would have been on my simulation
+
+1) What happens if there is a high cost on yaw and negligible cost on X and Y position?
+A: If the cost for yaw is high relative to x and y position then the LQR controller will attempt to reduce yaw error more than
+x and y position error. This imbalance will likely lead to the robot generally facing the right direction on the path but
+perhaps often not being on the red line due to a lack of emphasis on the x and y position being correct. 
+
+2) What if the cost on input is higher than the cost on the state?
+A: If the input cost (R) is higher than the state cost (Q) then the controller will attempt to emphasize limited use of the
+motors (reduced left and right wheel rotation speed and usage) to still achieve the desired state error. Since the control input,
+left and right wheel speeds, are the only way for the robot to adjust its x, y and yaw, an emphasis by the LQR controller
+to limit their use at the expense of achieving the desired x, y, and yaw error will result in less precise path following
+and will see the blue dot deviate often from the desired red path.
 '''
 
 import sys
@@ -101,10 +137,13 @@ class DifferentialDrive(object):
     def linearize(self, x, u, dt):
 
         theta = x[2] # theta as taken from state vector
+
         sin_theta = np.sin(theta)
-        cos_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+
         R_div_2 = self.R / 2
         R_div_L = self.R / self.L
+
         v_left = u[0]
         v_right = u[1]
 
@@ -112,7 +151,7 @@ class DifferentialDrive(object):
         A = np.eye(3)
         A[0, 2] = -R_div_2 * sin_theta * (v_left + v_right) * dt
         A[1, 2] = R_div_2 * cos_theta * (v_left + v_right) * dt
-        A[2, 2] = dt
+        A[2, 2] = 1
 
         # calculate B matrix
         B = np.zeros((3, 2))
@@ -153,39 +192,40 @@ Hint: Making additional helper functions may be useful
 def dLQR(F, Q, R, x, xf, dt):
 
     u0 = np.array([0, 0])
+
+    x_dist = np.subtract(x, xf)
+    N = 5 # number of steps
+    P = [None] * (N + 1)
+    P[N] = Q
+
     A, B = F.linearize(x, u0, dt)
     AT = np.transpose(A)
     BT = np.transpose(B)
 
-    x_dist = np.subtract(x, xf)
-    N = 5 # number of steps
-    P = [0] * (N + 1)
-    Qf = Q
-    P[N] = Qf
+    for t in range(N, 0, -1):
+        AT_Pt_A = np.matmul(np.matmul(AT, P[t]), A) # A^T * P[t] * A
+        AT_Pt_B = np.matmul(np.matmul(AT, P[t]), B) # A^T * P[t] * B
+        BT_Pt_B = np.matmul(np.matmul(BT, P[t]), B) # B^T * P[t] * B
+        BT_Pt_A = np.matmul(np.matmul(BT, P[t]), A) # B^T * P[t] * A
 
-    for i in range(N, 0, -1):
-       AT_Pi_A = np.matmul(np.matmul(AT, P[i]), A) # A^T * P[i] * A
-       AT_Pi_B = np.matmul(np.matmul(AT, P[i]), B) # A^T * P[i] * B
-       BT_Pi_B = np.matmul(np.matmul(BT, P[i]), B) # B^T * P[i] * B
-       BT_Pi_A = np.matmul(np.matmul(BT, P[i]), A) # B^T * P[i] * A
+        R_BT_Pt_B = np.add(R, BT_Pt_B) # R + (B^T * P[t] * B)
+        R_BT_Pt_B_inv = la.pinv(R_BT_Pt_B) # (R + (B^T * P[t] * B))^-1
+        Q_AT_Pt_A = np.add(Q, AT_Pt_A) # Q + (A^T * P[t] * A)
 
-       R_BT_Pi_B = np.add(R, BT_Pi_B) # R + (B^T * P[i] * B)
-       R_BT_Pi_B_inv = np.linalg.inv(R_BT_Pi_B) # (R + (B^T * P[i] * B))^-1
-       Q_AT_Pi_A = np.add(Q, AT_Pi_A) # Q + (A^T * P[i] * A)
+        P[t - 1] = np.subtract(Q_AT_Pt_A, np.matmul(np.matmul(AT_Pt_B, R_BT_Pt_B_inv), BT_Pt_A))
 
-       P[i - 1] = np.subtract(Q_AT_Pi_A, np.matmul(np.matmul(AT_Pi_B, R_BT_Pi_B_inv), BT_Pi_A))
+    K = [None] * N
+    u = [None] * N
 
-    K = [0] * N
-    u = [0] * N
+    for t in range(0, N):
+        BT_Ptplus1_B = np.matmul(np.matmul(BT, P[t + 1]), B) # B^T * P[t + 1] * B
+        BT_Ptplus1_A = np.matmul(np.matmul(BT, P[t + 1]), A) # B^T * P[t + 1] * A
+        R_BT_Ptplus1_B = np.add(R, BT_Ptplus1_B) # R + (B^T * P[t + 1] * B)
+        R_BT_Ptplus1_B_inv = la.pinv(R_BT_Ptplus1_B) # (R + (B^T * P[t + 1] * B))^-1
+        neg_R_BT_Ptplus1_B_inv = np.multiply(-1, R_BT_Ptplus1_B_inv) # -(R + (B^T * P[t + 1] * B))^-1
 
-    for i in range(0, N):
-        BT_Piplus1_B = np.matmul(np.matmul(BT, P[i + 1]), B) # B^T * P[i + 1] * B
-        BT_Piplus1_A = np.matmul(np.matmul(BT, P[i + 1]), A) # B^T * P[i + 1] * A
-        R_BT_Piplus1_B = np.add(R, BT_Piplus1_B) # R + (B^T * P[i + 1] * B)
-        R_BT_Piplus1_B_inv = np.linalg.inv(R_BT_Piplus1_B) # (R + (B^T * P[i + 1] * B))^-1
-        neg_R_BT_Piplus1_B_inv = np.multiply(-1, R_BT_Piplus1_B_inv) # -(R + (B^T * P[i + 1] * B))^-1
-        K[i] = np.matmul(neg_R_BT_Piplus1_B_inv, BT_Piplus1_A)
-        u[i] = np.matmul(K[i], x_dist)
+        K[t] = np.matmul(neg_R_BT_Ptplus1_B_inv, BT_Ptplus1_A)
+        u[t] = np.matmul(K[t], x_dist)
 
     u_opt = u[N - 1]
 
@@ -201,13 +241,11 @@ Experiment with different gains to see their effect on the vehicle's behavior.
   Output
     :return: R: input cost matrix
 '''
-
-
 # 5 points: Implement this function
 def get_R():
     R = [
-         [0.1, 0],
-         [0, 0.1]
+         [0.01, 0],
+         [0, 0.01]
         ]
     R = np.reshape(R, (2, 2))
     return R
